@@ -1,0 +1,22 @@
+{
+ "total": 7601,
+ "by_match": {
+  "일치": 6513,
+  "동지역": 770,
+  "지도없음": 137,
+  "개명": 79,
+  "오타보정": 47,
+  "읍면불명": 46,
+  "구보정": 7,
+  "구불명": 2
+ },
+ "unit_matched": 7553,
+ "unit_matched_pct": 99.37,
+ "sgg_matched_pct": 99.97,
+ "no_shape_units": 25,
+ "no_shape_fires": 137,
+ "supp_rows": 2020,
+ "supp_joined": 2018,
+ "units_with_shape": 1543,
+ "units_total": 1568
+}

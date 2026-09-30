@@ -1,0 +1,15 @@
+# 원자료: 용량이 커서 올리지 않는다 (README의 raw/ 표 참고)
+raw/
+# 5GB 토지임야정보를 합친 캐시. 원자료가 있으면 01b_landuse.py 가 다시 만든다
+out/landuse_by_dong.csv
+# 비밀 키
+.env
+# 파이썬
+__pycache__/
+*.pyc
+.venv/
+# 편집기·OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

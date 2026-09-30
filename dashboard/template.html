@@ -1,0 +1,646 @@
+<title>읍면 산불 위험 지도</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@500;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+/* 배치: 위에 조작줄(시군·월), 왼쪽에 지도, 오른쪽에 우선순위 표와 읍면 상세·브리핑. 좁은 화면에서는 한 줄로 쌓인다.
+   v1.1 디자인: 밝은 종이색 바탕 + 흰 카드. 위험 등급은 주황~적갈색 한 색상의 밝기 5단계(--g1 가장 진함).
+   어두운 테마는 <html data-theme="dark"> 를 붙였을 때만 켜진다(발표 화면이 OS 설정에 따라 바뀌지 않도록). */
+:root{
+  --bg:#f4f3ee; --surface:#ffffff; --surface-2:#f6f5f0; --surface-3:#edece5; --line:#e5e2d9; --line-2:#d6d2c6;
+  --ink:#1c1b18; --ink-2:#4f4d47; --ink-3:#7f7c73;
+  --accent:#1d6b4f; --accent-soft:#e2f0e9; --accent-ink:#ffffff; --map-bg:#eceee8;
+  --g1:#8a1c00; --g2:#bf3a05; --g3:#e0662a; --g4:#efa274; --g5:#f8d6c0;
+  --s1:#2f6fdb; --s2:#e26d3a; --ok:#1d6b4f; --bad:#b42318;
+  --shadow:0 1px 2px rgb(28 25 23 / .04),0 10px 28px -14px rgb(28 25 23 / .16);
+  --shadow-sm:0 1px 2px rgb(28 25 23 / .06);
+  --r:14px; --r-sm:9px;
+  --display:"IBM Plex Sans KR","Pretendard","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --body:"Noto Sans KR","Pretendard","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  color-scheme:light;
+}
+:root[data-theme="dark"]{
+  --bg:#111411; --surface:#191d1a; --surface-2:#20251f; --surface-3:#293029; --line:#2f3630; --line-2:#3c453d;
+  --ink:#f1f3ee; --ink-2:#b8c0b8; --ink-3:#86908a;
+  --accent:#64c99d; --accent-soft:#1c3328; --accent-ink:#0b1510; --map-bg:#171b18;
+  --g1:#ffc39a; --g2:#ff9a5c; --g3:#df7433; --g4:#a65a2f; --g5:#6a4632;
+  --s1:#4a8ff0; --s2:#e2703f; --ok:#64c99d; --bad:#f2846f;
+  --shadow:0 1px 2px rgb(0 0 0 / .3),0 10px 28px -14px rgb(0 0 0 / .6); --shadow-sm:0 1px 2px rgb(0 0 0 / .4);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.55;margin:0;-webkit-font-smoothing:antialiased}
+body::before{content:"";display:block;height:4px;background:linear-gradient(90deg,var(--g1),var(--g3) 45%,var(--accent))}
+.wrap{max-width:1400px;margin:0 auto;padding-inline:24px;padding-block:20px 56px;display:flex;flex-direction:column;gap:18px}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.015em}
+h1{font-size:26px;font-weight:700;line-height:1.2}
+h2{font-size:16px;font-weight:600}
+h3{font-size:12.5px;font-weight:600;color:var(--ink-3);letter-spacing:.01em}
+p{margin:0}
+.num{font-variant-numeric:tabular-nums}
+button,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+::selection{background:var(--accent-soft)}
+
+/* 헤더 */
+.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px;padding:6px 2px 2px}
+.top h1::before{content:"산불 예방 계획 지원";display:block;font-family:var(--body);font-size:11.5px;font-weight:600;letter-spacing:.08em;color:var(--accent);margin-bottom:6px}
+.top .sub{color:var(--ink-2);font-size:13.5px;max-width:64ch;margin-top:6px}
+.tabs{display:inline-flex;gap:2px;background:var(--surface-3);padding:4px;border-radius:999px;border:1px solid var(--line)}
+.tabs button{border:0;background:transparent;padding:7px 18px;border-radius:999px;font-weight:600;font-size:13.5px;color:var(--ink-2);transition:background .15s,color .15s}
+.tabs button:hover{color:var(--ink)}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow-sm)}
+
+/* 조작줄 */
+.controls{display:flex;flex-wrap:wrap;gap:12px 28px;align-items:flex-end;padding:14px 18px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+.field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.field>span{font-size:11.5px;color:var(--ink-3);font-weight:600;letter-spacing:.04em}
+select{appearance:none;-webkit-appearance:none;background:var(--surface-2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5l3.5 3.5 3.5-3.5' fill='none' stroke='%237f7c73' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 10px center;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:8px 32px 8px 12px;min-width:150px;max-width:100%;font-weight:500;transition:border-color .15s,box-shadow .15s}
+select:hover{border-color:var(--ink-3)}
+select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);outline:0}
+.months{display:inline-flex;flex-wrap:wrap;gap:2px;background:var(--surface-3);padding:3px;border-radius:999px;border:1px solid var(--line)}
+.months button{position:relative;border:0;background:transparent;border-radius:999px;padding:6px 0 8px;width:42px;font-variant-numeric:tabular-nums;font-weight:500;font-size:12.5px;color:var(--ink-2);transition:background .12s,color .12s}
+.months button:hover{color:var(--ink)}
+.months button.year{width:56px}
+.months button[aria-pressed="true"]{background:var(--ink);color:var(--surface);font-weight:600}
+.months button.season::after{content:"";position:absolute;left:50%;bottom:3px;width:5px;height:5px;border-radius:50%;margin-left:-2.5px;background:var(--g2)}
+.months button[aria-pressed="true"].season::after{background:var(--g4)}
+.hint{font-size:12px;color:var(--ink-3)}
+.hint i{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--g2);vertical-align:middle;margin-right:6px;position:relative;top:-1px}
+
+/* 본문 2열 */
+.main{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:18px;align-items:start}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);min-width:0;box-shadow:var(--shadow)}
+.mapbox{position:sticky;top:calc(env(safe-area-inset-top,0px) + 14px);overflow:hidden}
+.maphead{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line)}
+.legend{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12px;color:var(--ink-2)}
+.legend span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;padding:3px 9px 3px 5px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line)}
+.sw{display:inline-block;width:12px;height:12px;border-radius:50%;flex:none;box-shadow:inset 0 0 0 1px rgb(0 0 0 / .08)}
+.mapcanvas{position:relative;height:min(70vh,680px);min-height:420px;background:var(--map-bg)}
+.mapcanvas canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:grab}
+.zoom{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;gap:4px;background:var(--surface);padding:4px;border-radius:10px;border:1px solid var(--line);box-shadow:var(--shadow)}
+.zoom button{border:0;background:transparent;border-radius:7px;min-width:34px;height:32px;padding:0 9px;font-weight:600;font-size:13px;color:var(--ink-2)}
+.zoom button:hover{background:var(--surface-3);color:var(--ink)}
+.mapnote{padding:10px 16px;border-top:1px solid var(--line);font-size:12px;color:var(--ink-3);background:var(--surface-2)}
+.side{display:flex;flex-direction:column;gap:18px;min-width:0}
+.phead{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:14px 16px 10px}
+.phead .hint{flex-basis:100%}
+.btn{border:1px solid var(--line-2);background:var(--surface);border-radius:var(--r-sm);padding:6px 13px;font-weight:600;font-size:13px;transition:background .12s,border-color .12s,transform .06s}
+.btn:hover{background:var(--surface-2);border-color:var(--ink-3)}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn:disabled{opacity:.55;cursor:default;transform:none}
+
+/* 표 */
+.tablewrap{overflow-x:auto;max-height:360px;overflow-y:auto;border-top:1px solid var(--line)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:8px 12px;text-align:left;white-space:nowrap;vertical-align:middle}
+th{position:sticky;top:0;background:var(--surface-2);color:var(--ink-3);font-weight:600;font-size:11.5px;letter-spacing:.03em;border-bottom:1px solid var(--line);z-index:1}
+td.r,th.r{text-align:right}
+tbody tr{border-bottom:1px solid var(--line);cursor:pointer;transition:background .1s}
+tbody tr:last-child{border-bottom:0}
+tbody tr:hover{background:var(--surface-2)}
+tbody tr[aria-selected="true"]{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
+tbody tr[aria-selected="true"] td:first-child{font-weight:700;color:var(--accent)}
+.chip{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:12.5px;padding:2px 9px 2px 6px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line);white-space:nowrap}
+.chip.grade{background:color-mix(in srgb,var(--gc) 14%,var(--surface));border-color:color-mix(in srgb,var(--gc) 32%,var(--surface));color:color-mix(in srgb,var(--gc) 78%,var(--ink))}
+.chip.g1{--gc:var(--g1)} .chip.g2{--gc:var(--g2)} .chip.g3{--gc:var(--g3)} .chip.g4{--gc:var(--g4)} .chip.g5{--gc:var(--g5)}
+.chip.g4,.chip.g5{color:var(--ink-2)}
+.tag{font-size:11px;color:var(--ink-3);border:1px solid var(--line-2);border-radius:999px;padding:0 7px;margin-left:6px;font-weight:500}
+td.muted{color:var(--ink-3);font-size:12px}
+
+/* 읍면 상세 */
+.detail{padding:18px;display:flex;flex-direction:column;gap:16px}
+.dtitle{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.dtitle h2{font-size:21px;font-weight:700;flex-basis:100%}
+.dtitle .meta{color:var(--ink-3);font-size:12.5px;flex-basis:100%;margin-top:-2px}
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.tile{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-sm);padding:12px 13px;min-width:0;position:relative;overflow:hidden}
+.tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--ink-3)}
+.tile:nth-child(3)::before{background:var(--g2)}
+.tile:nth-child(4)::before{background:var(--accent)}
+.tile b{display:block;font-family:var(--display);font-size:22px;font-weight:700;line-height:1.15;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.tile span{font-size:11.5px;color:var(--ink-3);font-weight:500}
+.charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.chart{display:flex;flex-direction:column;gap:10px;min-width:0;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-sm);padding:12px 14px}
+.hb{display:grid;grid-template-columns:minmax(0,7.2em) minmax(0,1fr) 2.6em;gap:5px 8px;align-items:center;font-size:12.5px}
+.hb .lab{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
+.hb .bar{height:12px;border-radius:0 6px 6px 0;background:linear-gradient(90deg,var(--s1),color-mix(in srgb,var(--s1) 70%,white));min-width:3px}
+.hb .v{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.cols{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:3px;align-items:end;height:100px;border-bottom:1px solid var(--line-2)}
+.cols div{background:var(--s1);border-radius:4px 4px 0 0;min-height:0;opacity:.9}
+.cols div:hover{opacity:1}
+.cols div.sel{outline:2px solid var(--ink);outline-offset:1px;opacity:1}
+.colx{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:3px;font-size:11px;color:var(--ink-3);text-align:center;font-variant-numeric:tabular-nums}
+.colx b{color:var(--ink);font-weight:700}
+.empty{color:var(--ink-3);font-size:12.5px}
+.recent td,.recent th{padding:6px 10px;font-size:12.5px}
+.recent tbody tr{cursor:default}
+.recent tbody tr:hover{background:transparent}
+.brief{background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 22%,var(--surface));border-radius:var(--r-sm);padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+.brief h3{color:var(--accent)}
+.brief p{white-space:pre-wrap;max-width:68ch;line-height:1.7}
+.brief .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.brief .state{font-size:12px;color:var(--ink-3)}
+
+/* 검증·데이터 탭 */
+.check{display:flex;flex-direction:column;gap:18px}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.kpi{padding:16px 18px;display:flex;flex-direction:column;gap:4px}
+.kpi b{font-family:var(--display);font-size:32px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1;display:block;letter-spacing:-.02em}
+.kpi .cmp{font-size:12.5px;color:var(--ink-3)}
+.kpi h3{margin-bottom:6px}
+.kpi .delta{align-self:flex-start;font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px;margin-top:6px;font-variant-numeric:tabular-nums}
+.kpi .delta.up{background:color-mix(in srgb,var(--ok) 14%,var(--surface));color:var(--ok)}
+.kpi .delta.down{background:color-mix(in srgb,var(--bad) 12%,var(--surface));color:var(--bad)}
+.two{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:18px;align-items:start}
+.box{padding:18px;display:flex;flex-direction:column;gap:12px}
+.box p,.box li{max-width:70ch;color:var(--ink-2)}
+.box ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:8px}
+.box strong{color:var(--ink);font-weight:600}
+.svgwrap{position:relative;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px}
+svg text{font-family:var(--body);font-size:11px;fill:var(--ink-2)}
+.plain td,.plain th{white-space:normal;vertical-align:top}
+.plain tbody tr{cursor:default}
+.plain tbody tr:hover{background:transparent}
+.plain th{position:static}
+.plain td:first-child{font-weight:600;white-space:nowrap}
+#tip{position:fixed;z-index:20;pointer-events:none;background:var(--ink);color:var(--surface);font-size:12px;line-height:1.45;padding:7px 10px;border-radius:8px;max-width:240px;box-shadow:0 4px 14px rgb(0 0 0 / .18)}
+@media (max-width:980px){
+  .main,.two{grid-template-columns:minmax(0,1fr)}
+  .mapbox{position:static}
+  .mapcanvas{height:380px;min-height:0}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:560px){
+  .wrap{padding-inline:16px}
+  .tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .charts{grid-template-columns:minmax(0,1fr)}
+  .months button{width:34px}
+  .kpis{grid-template-columns:minmax(0,1fr)}
+  h1{font-size:22px}
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>읍면 산불 위험 지도</h1>
+      <p class="sub" id="subline"></p>
+    </div>
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tab-map" aria-selected="true">지도·우선순위</button>
+      <button role="tab" id="tab-check" aria-selected="false">검증·데이터</button>
+    </div>
+  </header>
+
+  <section id="view-map" style="display:contents">
+    <div class="controls">
+      <label class="field"><span>시도</span><select id="sel-sido"></select></label>
+      <label class="field"><span>시군</span><select id="sel-city"></select></label>
+      <div class="field">
+        <span>시기</span>
+        <div class="months" id="months"></div>
+      </div>
+      <p class="hint"><i></i>산불조심기간(봄 2.1~5.15, 가을 11.1~12.15)</p>
+    </div>
+
+    <div class="main">
+      <div class="panel mapbox">
+        <div class="maphead">
+          <h2 id="maptitle">위험 등급</h2>
+          <div class="legend" id="legend"></div>
+        </div>
+        <div class="mapcanvas" id="mapcanvas">
+          <canvas id="map" aria-label="읍면별 산불 위험 등급 지도"></canvas>
+          <div class="zoom">
+            <button id="z-in" aria-label="확대">+</button>
+            <button id="z-out" aria-label="축소">−</button>
+            <button id="z-city">시군</button>
+            <button id="z-all">전국</button>
+          </div>
+        </div>
+        <p class="mapnote" id="mapnote"></p>
+      </div>
+
+      <div class="side">
+        <div class="panel">
+          <div class="phead">
+            <h2 id="listtitle">예방 우선순위</h2>
+            <button class="btn" id="csv">CSV 저장</button>
+            <p class="hint" id="listhint"></p>
+          </div>
+          <div class="tablewrap">
+            <table>
+              <thead><tr><th class="r">순위</th><th>읍면</th><th>등급</th><th>주원인 유형</th><th>위험 시기</th><th class="r">산불 건수</th></tr></thead>
+              <tbody id="rows"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel detail" id="detail"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="view-check" class="check" hidden></section>
+</div>
+<div id="tip" hidden></div>
+
+<script type="application/json" id="data">/*__DATA__*/null</script>
+<script>
+(function(){
+"use strict";
+const STANDALONE = /*__STANDALONE__*/false;
+const D = JSON.parse(document.getElementById("data").textContent);
+const $ = id => document.getElementById(id);
+const el = (tag, attrs, html) => { const e = document.createElement(tag); if (attrs) for (const k in attrs) e.setAttribute(k, attrs[k]); if (html != null) e.innerHTML = html; return e; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const fmt = (x, d) => Number(x).toLocaleString("ko-KR", {minimumFractionDigits: d || 0, maximumFractionDigits: d || 0});
+const M = D.meta, U = D.units, G = D.groups;
+const ACTIONABLE = 7;                      // 앞의 7개 유형만 예방 조치 규칙이 있다 (원인 미상·기타 제외)
+const SEASON = [2,3,4,5,11,12];            // 산불조심기간이 걸친 달
+const CUTS = M.metrics.grade_cuts;         // 상위 5/15/35/65%
+
+// 원인 유형별 예방 조치 규칙. 앞의 네 개는 팀 기획서 그대로. draft: 1 을 붙이면 표에 '초안' 표시가 붙는다(지금은 없음).
+const RULES = {
+  // 주말 순찰은 그 읍면 기록이 뒷받침하지 않으면(8건 이상인데 토·일 비중 25% 미만) 뺀다
+  "입산자 실화": {type: "입산자 실화형", act: (p, u) => ["등산로 입구 감시 초소 운영", "입산 통제 구간 지정"].concat(u && u.n >= 8 && u.wk / u.n < 0.25 ? [] : ["주말 집중 순찰"])},
+  "논밭·영농 소각": {type: "논밭·영농 소각형", act: p => ["마을방송 계도", "영농부산물 파쇄 지원", "소각 단속 순찰"]},
+  "쓰레기 소각": {type: "쓰레기 소각형", act: p => ["마을 쓰레기 소각 단속", "수거 지원"]},
+  "성묘객 실화": {type: "성묘객 실화형", act: p => ["한식·추석 전 묘지 주변 점검", "성묘객 대상 홍보"]},
+  // 아래 3개는 2026-09-30 산림청 산불방지 종합대책(2025·2026)과 산림보호법 벌칙 규정에 맞춰 확정했다. 근거는 docs/rules_basis.md
+  "담뱃불 실화": {type: "담뱃불 실화형", act: p => ["등산로·산림 인접 도로변 흡연 및 꽁초 투기 기동 단속", "입산통제구역·등산로 폐쇄 구간 지정", "등산로 입구·도로변 흡연 금지 안내와 과태료 고지"]},
+  "건축물 화재 비화": {type: "건축물 화재 비화형", act: p => ["산림 100m 이내 화목보일러 사용 가구 목록화와 연통·연료·재 처리 점검", "건축물 주변 25m 이내 입목 정리(산불방지 안전공간)", "소방서와 건축물 화재 정보 공유 및 주변 산림 예방 살수 협업"]},
+  "산업현장 실화": {type: "산업현장 실화형", act: p => ["산림 연접 공사장·작업장의 용접 등 화기 작업 안전관리 점검", "산림사업장 작업자 산불 예방 교육", "산불조심기간 화기 작업 시 감시 인력·소화 장비 비치 계도"]},
+};
+// 규칙의 근거 (검증·데이터 탭 표에 표시)
+const RULE_BASIS = {
+  "입산자 실화": "팀 기획서", "논밭·영농 소각": "팀 기획서", "쓰레기 소각": "팀 기획서", "성묘객 실화": "팀 기획서",
+  "담뱃불 실화": "산림보호법 제34조·제57조(흡연·꽁초 투기 과태료), 2026 종합대책(입산통제구역 확대), 산림청 기동단속(2026.3)",
+  "건축물 화재 비화": "2025 종합대책(화목보일러 사용가구 점검, 관계기관 협업), 2026 종합대책(사용 가구 목록화·연통·연료·재처리 관리, 25m 이내 입목 벌채, 안전공간 조성)",
+  "산업현장 실화": "2025 종합대책(산림연접지 용접작업 등 화기 안전관리), 산림청 산림사업 안전관리 매뉴얼(2020)",
+};
+
+// ---------- 단위별 집계
+U.forEach((u, i) => {
+  u.i = i; u.n = u.f.length; u.ha = 0; u.n5 = 0; u.wk = 0;
+  u.mc = new Array(12).fill(0); u.gc = new Array(G.length).fill(0);
+  for (const f of u.f) {
+    const y = Math.floor(f[0] / 10000), m = Math.floor(f[0] / 100) % 100, d = f[0] % 100;
+    u.ha += f[2]; u.mc[m - 1]++; u.gc[D.groupOfCause[f[1]]]++;
+    if (y >= 2021 && y <= 2025) u.n5++;
+    const wd = new Date(y, m - 1, d).getDay(); if (wd === 0 || wd === 6) u.wk++;
+  }
+});
+const cities = new Map();
+for (const u of U) {
+  if (!cities.has(u.ct)) cities.set(u.ct, {key: u.ct, label: u.cl, sd: u.sd, units: [], gc: new Array(G.length).fill(0), mc: new Array(12).fill(0), n: 0});
+  const c = cities.get(u.ct); c.units.push(u.i); c.n += u.n;
+  u.gc.forEach((v, k) => c.gc[k] += v); u.mc.forEach((v, k) => c.mc[k] += v);
+}
+// 월별 등급 경계: 전체 읍면×월 칸을 한 줄로 세워 같은 비율(상위 5/15/35/65%)로 자른다
+const cells = []; for (const u of U) for (let m = 0; m < 12; m++) cells.push(u.rk * u.cv[m]);
+cells.sort((a, b) => b - a);
+const MCUT = CUTS.map(q => cells[Math.floor(q * cells.length)]);
+
+const state = {city: null, unit: null, month: 0, focus: true, ai: {}};
+const val = u => state.month ? u.rk * u.cv[state.month - 1] : u.rk;
+const grade = u => { if (!state.month) return u.gr; const v = u.rk * u.cv[state.month - 1]; let g = 1; while (g < 5 && v < MCUT[g - 1]) g++; return g; };
+const hasBatchim = w => { const c = w.charCodeAt(w.length - 1); return c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28 !== 0; };
+const josa = (w, a, b) => w + (hasBatchim(w) ? a : b);
+
+function monthLabel(mc, n) {            // 많이 난 달 1~2개를 "3~4월" 식으로
+  const mx = Math.max(...mc); if (!mx) return null;
+  let ms = mc.map((v, i) => [v, i + 1]).filter(x => x[0] >= mx * 0.7).sort((a, b) => b[0] - a[0]).slice(0, 2).map(x => x[1]).sort((a, b) => a - b);
+  const k = ms.reduce((s, m) => s + mc[m - 1], 0);
+  const lab = ms.length === 2 ? (ms[1] - ms[0] === 1 ? ms[0] + "~" + ms[1] + "월" : ms[0] + "월·" + ms[1] + "월") : ms[0] + "월";
+  return {label: lab, k, months: ms};
+}
+function profile(u) {                   // 주원인 유형·위험 시기와 그 근거(읍면 자체 기록 또는 시군 기록)
+  const c = cities.get(u.ct);
+  const act = gc => gc.slice(0, ACTIONABLE).reduce((a, b) => a + b, 0);
+  const own = act(u.gc) >= 3;
+  const gc = own ? u.gc : c.gc, base = own ? u.n : c.n;
+  const order = gc.map((v, i) => [v, i]).slice(0, ACTIONABLE).sort((a, b) => b[0] - a[0]);
+  const top = order[0][0] > 0 ? order[0] : null, second = order[1][0] > 0 ? order[1] : null;
+  let peak = u.n >= 3 ? monthLabel(u.mc, u.n) : null, peakOwn = !!peak;
+  if (!peak) { const mx = Math.max(...u.cv); const m = u.cv.indexOf(mx) + 1; peak = {label: m + "월", k: 0, months: [m]}; }
+  return {own, base, top, second, peak, peakOwn, city: c};
+}
+
+// ---------- 지도 도형
+const T = D.topo;
+const arcs = T.arcs.map(a => { const p = new Array(a.length / 2); let x = 0, y = 0; for (let i = 0; i < a.length; i += 2) { x += a[i]; y += a[i + 1]; p[i / 2] = [x, y]; } return p; });
+const NS = M.n_shape;
+const paths = [], bbox = [];
+for (let i = 0; i < NS; i++) {
+  const p = new Path2D(); let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  for (const ring of T.rings[i]) {
+    let first = true;
+    for (const ai of ring) {
+      const pts = ai < 0 ? arcs[~ai].slice().reverse() : arcs[ai];
+      for (let k = first ? 0 : 1; k < pts.length; k++) {
+        const q = pts[k]; if (first && k === 0) p.moveTo(q[0], q[1]); else p.lineTo(q[0], q[1]);
+        if (q[0] < x0) x0 = q[0]; if (q[0] > x1) x1 = q[0]; if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1];
+      }
+      first = false;
+    }
+    p.closePath();
+  }
+  paths.push(p); bbox.push([x0, y0, x1, y1]);
+}
+const addArc = (p, pts) => { p.moveTo(pts[0][0], pts[0][1]); for (let k = 1; k < pts.length; k++) p.lineTo(pts[k][0], pts[k][1]); };
+const meshUnit = new Path2D(), meshCity = new Path2D();
+T.arcUnits.forEach((own, ai) => { if (own.length < 2) return; addArc(U[own[0]].ct === U[own[1]].ct ? meshUnit : meshCity, arcs[ai]); });
+const ALL = bbox.reduce((a, b) => [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])], [1e9, 1e9, -1e9, -1e9]);
+let cityOutline = null, cityBox = ALL;
+function buildCity() {
+  const p = new Path2D(); let b = [1e9, 1e9, -1e9, -1e9];
+  T.arcUnits.forEach((own, ai) => { const inC = own.filter(o => U[o].ct === state.city).length; if (inC === 1) addArc(p, arcs[ai]); });
+  for (const i of cities.get(state.city).units) if (i < NS) { const q = bbox[i]; b = [Math.min(b[0], q[0]), Math.min(b[1], q[1]), Math.max(b[2], q[2]), Math.max(b[3], q[3])]; }
+  cityOutline = p; cityBox = b[0] < 1e9 ? b : ALL;
+}
+
+const cv = $("map"), ctx = cv.getContext("2d");
+let k = 1, tx = 0, ty = 0, dpr = 1, W = 0, H = 0;
+function resize() { const r = cv.getBoundingClientRect(); dpr = window.devicePixelRatio || 1; W = r.width; H = r.height; cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+function fit(b, pad) { pad = pad == null ? 28 : pad; const w = b[2] - b[0], h = b[3] - b[1]; k = Math.min((W - 2 * pad) / w, (H - 2 * pad) / h); tx = W / 2 - k * (b[0] + b[2]) / 2; ty = H / 2 + k * (b[1] + b[3]) / 2; }
+const mapT = () => ctx.setTransform(k * dpr, 0, 0, -k * dpr, tx * dpr, ty * dpr);
+function draw() {
+  const ramp = [css("--g1"), css("--g2"), css("--g3"), css("--g4"), css("--g5")], bg = css("--map-bg"), ink = css("--ink");
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = bg; ctx.fillRect(0, 0, cv.width, cv.height);
+  mapT();
+  const vx0 = -tx / k, vx1 = (W - tx) / k, vy1 = ty / k, vy0 = (ty - H) / k;
+  for (let i = 0; i < NS; i++) {
+    const b = bbox[i]; if (b[2] < vx0 || b[0] > vx1 || b[3] < vy0 || b[1] > vy1) continue;
+    ctx.globalAlpha = state.focus && U[i].ct !== state.city ? 0.4 : 1;
+    ctx.fillStyle = ramp[grade(U[i]) - 1]; ctx.fill(paths[i], "evenodd");
+  }
+  ctx.globalAlpha = 1; ctx.lineJoin = "round";
+  ctx.strokeStyle = bg; ctx.lineWidth = 0.8 / k; ctx.stroke(meshUnit);
+  ctx.lineWidth = 1.8 / k; ctx.stroke(meshCity);
+  if (cityOutline) { ctx.strokeStyle = ink; ctx.lineWidth = 1.6 / k; ctx.stroke(cityOutline); }
+  const su = state.unit != null && state.unit < NS ? state.unit : null;
+  if (su != null) { ctx.strokeStyle = bg; ctx.lineWidth = 5 / k; ctx.stroke(paths[su]); ctx.strokeStyle = ink; ctx.lineWidth = 2.6 / k; ctx.stroke(paths[su]); }
+  // 선택한 시군의 읍면 이름
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (state.city && k * (cityBox[2] - cityBox[0]) > W * 0.3) {
+    ctx.font = "700 12px " + css("--body"); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.lineJoin = "round";
+    for (const i of cities.get(state.city).units) {
+      if (i >= NS) continue; const u = U[i], b = bbox[i];
+      const name = u.nm; if ((b[2] - b[0]) * k < ctx.measureText(name).width * 0.9) continue;
+      const x = u.cx * k + tx, y = ty - u.cy * k;
+      ctx.strokeStyle = bg; ctx.lineWidth = 3.5; ctx.strokeText(name, x, y); ctx.fillStyle = ink; ctx.fillText(name, x, y);
+    }
+  }
+}
+function unitAt(px, py) {
+  const gx = (px - tx) / k, gy = (ty - py) / k; mapT();
+  for (let i = 0; i < NS; i++) { const b = bbox[i]; if (gx < b[0] || gx > b[2] || gy < b[1] || gy > b[3]) continue; if (ctx.isPointInPath(paths[i], px * dpr, py * dpr, "evenodd")) return i; }
+  return null;
+}
+function zoomAt(px, py, f) { const nk = Math.max(0.02, Math.min(3, k * f)); f = nk / k; tx = px - (px - tx) * f; ty = py - (py - ty) * f; k = nk; draw(); }
+
+const tip = $("tip");
+function showTip(html, x, y) { tip.innerHTML = html; tip.hidden = false; const r = tip.getBoundingClientRect(); let lx = x + 14, ly = y + 14; if (lx + r.width > innerWidth - 8) lx = x - r.width - 10; if (ly + r.height > innerHeight - 8) ly = y - r.height - 10; tip.style.left = Math.max(4, lx) + "px"; tip.style.top = Math.max(4, ly) + "px"; }
+const hideTip = () => { tip.hidden = true; };
+
+const ptrs = new Map(); let moved = 0, pinch = 0;
+cv.addEventListener("pointerdown", e => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.offsetX, e.offsetY]); moved = 0; if (ptrs.size === 2) { const a = [...ptrs.values()]; pinch = Math.hypot(a[0][0] - a[1][0], a[0][1] - a[1][1]); } });
+cv.addEventListener("pointermove", e => {
+  if (ptrs.has(e.pointerId)) {
+    const p = ptrs.get(e.pointerId), dx = e.offsetX - p[0], dy = e.offsetY - p[1]; ptrs.set(e.pointerId, [e.offsetX, e.offsetY]);
+    if (ptrs.size === 1) { tx += dx; ty += dy; moved += Math.abs(dx) + Math.abs(dy); draw(); }
+    else if (ptrs.size === 2) { const a = [...ptrs.values()], d = Math.hypot(a[0][0] - a[1][0], a[0][1] - a[1][1]); if (pinch > 0) zoomAt((a[0][0] + a[1][0]) / 2, (a[0][1] + a[1][1]) / 2, d / pinch); pinch = d; moved += 10; }
+    hideTip(); return;
+  }
+  const i = unitAt(e.offsetX, e.offsetY);
+  if (i == null) { hideTip(); cv.style.cursor = "grab"; return; }
+  cv.style.cursor = "pointer"; const u = U[i];
+  showTip("<b>" + esc(u.cl + " " + u.nm) + "</b><br>" + (state.month ? state.month + "월 " : "") + grade(u) + "등급 · 산불 " + u.n + "건", e.clientX, e.clientY);
+});
+const endPtr = e => { const was = ptrs.has(e.pointerId); ptrs.delete(e.pointerId); if (was && e.type === "pointerup" && moved < 5 && ptrs.size === 0) { const i = unitAt(e.offsetX, e.offsetY); if (i != null) selectUnit(i, true); } };
+cv.addEventListener("pointerup", endPtr); cv.addEventListener("pointercancel", endPtr); cv.addEventListener("pointerleave", hideTip);
+cv.addEventListener("wheel", e => { e.preventDefault(); zoomAt(e.offsetX, e.offsetY, Math.exp(-e.deltaY * 0.0015)); }, {passive: false});
+$("z-in").onclick = () => zoomAt(W / 2, H / 2, 1.5);
+$("z-out").onclick = () => zoomAt(W / 2, H / 2, 1 / 1.5);
+$("z-all").onclick = () => { state.focus = false; fit(ALL, 14); draw(); };
+$("z-city").onclick = () => { state.focus = true; fit(cityBox, 40); draw(); };
+
+// ---------- 조작줄
+const sidos = [...new Set(U.map(u => u.sd))];
+const selSido = $("sel-sido"), selCity = $("sel-city");
+selSido.innerHTML = sidos.map(s => "<option>" + s + "</option>").join("");
+function fillCities(sd) { const list = [...cities.values()].filter(c => c.sd === sd).sort((a, b) => a.label.localeCompare(b.label, "ko")); selCity.innerHTML = list.map(c => '<option value="' + c.key + '">' + esc(c.label) + " (" + c.units.length + "곳)</option>").join(""); return list; }
+selSido.onchange = () => { const l = fillCities(selSido.value); selectCity(l[0].key); };
+selCity.onchange = () => selectCity(selCity.value);
+const monthsEl = $("months");
+for (let m = 0; m <= 12; m++) {
+  const b = el("button", {"aria-pressed": m === 0 ? "true" : "false", type: "button"}, m ? m + "월" : "연간");
+  if (!m) b.className = "year"; else if (SEASON.includes(m)) b.className = "season";
+  b.onclick = () => { state.month = m; [...monthsEl.children].forEach((c, i) => c.setAttribute("aria-pressed", i === m ? "true" : "false")); renderAll(); };
+  monthsEl.appendChild(b);
+}
+$("legend").innerHTML = [1, 2, 3, 4, 5].map(g => '<span><i class="sw" style="background:var(--g' + g + ')"></i>' + g + "등급</span>").join("");
+
+function selectCity(key, keepUnit) {
+  state.city = key; const c = cities.get(key);
+  if (selSido.value !== c.sd) { selSido.value = c.sd; fillCities(c.sd); }
+  selCity.value = key; buildCity(); state.focus = true; fit(cityBox, 40);
+  if (!keepUnit) state.unit = c.units.slice().sort((a, b) => val(U[b]) - val(U[a]))[0];
+  renderAll();
+}
+function selectUnit(i, fromMap) { hideTip(); if (U[i].ct !== state.city) { state.unit = i; selectCity(U[i].ct, true); return; } state.unit = i; renderAll(); if (fromMap) { const r = document.querySelector('#rows tr[aria-selected="true"]'); if (r) r.scrollIntoView({block: "nearest"}); } }
+
+// ---------- 우선순위 표
+function ranked() { return cities.get(state.city).units.map(i => U[i]).sort((a, b) => val(b) - val(a)); }
+function renderList() {
+  const c = cities.get(state.city), rows = ranked();
+  $("listtitle").textContent = c.label + " 예방 우선순위";
+  $("listhint").textContent = (state.month ? state.month + "월 기준. " : "연간 기준. ") + "주원인 유형에 *가 붙은 곳은 자체 기록이 3건 미만이라 시군 전체 기록으로 정했습니다.";
+  $("rows").innerHTML = rows.map((u, r) => { const p = profile(u), rule = p.top ? RULES[G[p.top[1]]] : null;
+    return '<tr data-i="' + u.i + '" aria-selected="' + (u.i === state.unit) + '"><td class="r num">' + (r + 1) + "</td><td>" + esc(u.nm) + (u.sh ? "" : '<span class="tag">지도 없음</span>') +
+      '</td><td><span class="chip grade g' + grade(u) + '"><i class="sw" style="background:var(--g' + grade(u) + ')"></i>' + grade(u) + "등급</span></td><td>" + (rule ? rule.type + (p.own ? "" : " *") : "기록 없음") +
+      "</td><td>" + p.peak.label + (p.peakOwn ? "" : " *") + '</td><td class="r num">' + u.n + "</td></tr>"; }).join("");
+}
+$("rows").addEventListener("click", e => { const tr = e.target.closest("tr"); if (tr) selectUnit(+tr.dataset.i); });
+
+// ---------- 브리핑 (숫자는 집계·모델 결과만, 조치는 규칙으로만)
+function briefing(u) {
+  const p = profile(u), c = p.city, s = [], facts = {};
+  const place = c.label + " " + u.nm;
+  if (u.n === 0) {
+    s.push(josa(place, "은", "는") + " " + M.period + " 기간에 기록된 산불이 없습니다. 위험 등급 " + u.gr + "등급은 이웃 읍면과 " + c.label + " 전체의 발생 수준으로 추정한 값입니다.");
+  } else {
+    s.push(josa(place, "은", "는") + " " + M.period + " 기간에 산불이 " + u.n + "건 발생했고 피해 면적은 " + fmt(u.ha, u.ha < 10 ? 2 : 1) + "ha입니다." +
+      (u.nc > 1 ? " 위험 등급은 " + u.gr + "등급으로 " + c.label + " " + u.nc + "곳 중 " + u.rc + "위입니다." : " 위험 등급은 " + u.gr + "등급입니다."));
+  }
+  if (p.top) {
+    const g = G[p.top[1]], share = Math.round(p.top[0] / p.base * 100);
+    if (p.own) s.push("원인은 " + g + " " + p.top[0] + "건(" + share + "%)이 가장 많" + (p.second ? "고, 다음은 " + G[p.second[1]] + " " + p.second[0] + "건입니다." : "습니다."));
+    else s.push("이 지역은 원인이 확인된 기록이 적어 " + c.label + " 전체 기록 " + c.n + "건을 참고했습니다. " + c.label + "에서는 " + g + " " + p.top[0] + "건(" + share + "%)이 가장 많습니다.");
+    if (p.peakOwn) s.push("시기는 " + p.peak.label + "에 " + p.peak.k + "건(" + Math.round(p.peak.k / u.n * 100) + "%)이 몰렸습니다.");
+    else s.push("이 유형의 산불은 이 지역에서 " + p.peak.label + "에 가장 많을 것으로 추정됩니다.");
+    if (g === "입산자 실화" && u.n >= 5 && u.wk / u.n >= 0.4) s.push("전체 " + u.n + "건 중 " + u.wk + "건(" + Math.round(u.wk / u.n * 100) + "%)이 토·일요일에 났습니다.");
+    const h = M.hours[g]; if (h) s.push("전국 기록(2022~2025년 " + h.n + "건)에서 " + g + " 산불의 " + h.share_11_17 + "%가 11~17시에 발생했습니다.");
+    const rule = RULES[g]; let rec = "권고: " + p.peak.label + "에 " + rule.act(p.peak.label, u).join(", ") + ".";
+    if (p.own && p.second && p.second[0] >= 2 && p.second[0] / u.n >= 0.2) rec += " 추가로 " + G[p.second[1]] + "에 대비해 " + RULES[G[p.second[1]]].act(p.peak.label, u).join(", ") + ".";
+    s.push(rec);
+    Object.assign(facts, {주원인: g, 주원인_건수: p.top[0], 근거: p.own ? "읍면 자체 기록" : "시군 전체 기록", 위험시기: p.peak.label});
+  } else s.push("원인이 확인된 기록이 없어 유형별 권고를 정하지 못했습니다. 산불조심기간의 기본 감시 계획을 적용하십시오.");
+  Object.assign(facts, {지역: place, 기간: M.period, 산불건수: u.n, 피해면적ha: +u.ha.toFixed(2), 위험등급: u.gr, 시군내순위: u.rc + "/" + u.nc});
+  return {text: s.join(" "), facts};
+}
+
+// ---------- 읍면 상세
+function renderDetail() {
+  const u = U[state.unit], c = cities.get(u.ct), p = profile(u), b = briefing(u);
+  const mx = Math.max(1, ...u.gc), causeRows = u.gc.map((v, i) => [v, i]).filter(x => x[0] > 0).sort((a, b) => b[0] - a[0]);
+  const mm = Math.max(1, ...u.mc), ai = state.ai[u.id];
+  const recent = u.f.slice(0, 6);
+  $("detail").innerHTML =
+    '<div class="dtitle"><h2>' + esc(c.label + " " + u.nm) + '</h2><span class="chip grade g' + u.gr + '"><i class="sw" style="background:var(--g' + u.gr + ')"></i>연간 ' + u.gr + "등급</span>" +
+    (state.month ? '<span class="chip grade g' + grade(u) + '"><i class="sw" style="background:var(--g' + grade(u) + ')"></i>' + state.month + "월 " + grade(u) + "등급</span>" : "") +
+    '<span class="meta">' + (u.nc > 1 ? c.label + " " + u.nc + "곳 중 " + u.rc + "위 · " : "") + "전국 " + fmt(M.n_units) + "곳 중 " + fmt(u.ra) + "위" + (u.ar ? " · 면적 " + fmt(u.ar, 0) + "㎢" : "") + (u.fo != null ? " · 임야 " + u.fo + "% · 농지 " + u.fa + "%" : "") + "</span></div>" +
+    '<div class="tiles"><div class="tile"><b>' + u.n + "건</b><span>산불 " + M.period + '</span></div><div class="tile"><b>' + u.n5 + '건</b><span>최근 5년 2021~2025</span></div><div class="tile"><b>' + fmt(u.ha, u.ha < 10 ? 2 : 1) +
+    'ha</b><span>피해 면적 합계</span></div><div class="tile"><b>' + fmt(u.rk, 2) + "건</b><span>모델 예상 연 발생</span></div></div>" +
+    '<div class="charts"><div class="chart"><h3>원인 유형별 건수</h3>' + (causeRows.length ? '<div class="hb">' + causeRows.map(x => '<span class="lab">' + G[x[1]] + '</span><span><span class="bar" data-tip="' + G[x[1]] + " " + x[0] + "건 (" + Math.round(x[0] / u.n * 100) + '%)" style="display:block;width:' + (x[0] / mx * 100) + '%"></span></span><span class="v">' + x[0] + "</span>").join("") + "</div>" : '<p class="empty">기록된 산불이 없습니다.</p>') +
+    '</div><div class="chart"><h3>월별 건수</h3>' + (u.n ? '<div class="cols">' + u.mc.map((v, i) => '<div data-tip="' + (i + 1) + "월 " + v + '건" class="' + (state.month === i + 1 ? "sel" : "") + '" style="height:' + (v / mm * 100) + '%"></div>').join("") + '</div><div class="colx">' + u.mc.map((v, i) => "<span>" + (v === mm && v > 0 ? "<b>" + (i + 1) + "</b>" : i + 1) + "</span>").join("") + "</div>" : '<p class="empty">기록된 산불이 없습니다.</p>') + "</div></div>" +
+    (recent.length ? '<div class="chart"><h3>최근 산불 ' + recent.length + '건</h3><div class="tablewrap" style="max-height:none;border-top:0"><table class="recent"><thead><tr><th>날짜</th><th>동·리</th><th>원인</th><th class="r">피해(ha)</th><th class="r">발생 시각</th></tr></thead><tbody>' +
+      recent.map(f => { const d = String(f[0]); return "<tr><td class='num'>" + d.slice(0, 4) + "-" + d.slice(4, 6) + "-" + d.slice(6) + "</td><td>" + (f[3] ? esc(f[3]) : "–") + "</td><td>" + D.causes[f[1]] + "</td><td class='r num'>" + fmt(f[2], 2) + "</td><td class='r num'>" + (f[4] >= 0 ? f[4] + "시" : "–") + "</td></tr>"; }).join("") + "</tbody></table></div></div>" : "") +
+    '<div class="brief"><h3>예방 브리핑</h3><p id="brieftext">' + esc(ai && ai.text ? ai.text : b.text) + '</p><div class="row"><button class="btn primary" id="copy">복사</button><button class="btn" id="ai" hidden>AI로 문장 다듬기</button><button class="btn" id="orig"' + (ai && ai.text ? "" : " hidden") + '>원문 보기</button><span class="state" id="briefstate">' + (ai && ai.text ? "AI가 다듬은 문장입니다. 숫자는 원문과 대조해 확인하세요." : "") + "</span></div></div>";
+  $("copy").onclick = async () => { const t = $("brieftext").textContent; try { await navigator.clipboard.writeText(t); $("briefstate").textContent = "복사했습니다."; } catch (e) { const r = document.createRange(); r.selectNodeContents($("brieftext")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $("briefstate").textContent = "문장을 선택했습니다. Ctrl+C로 복사하세요."; } };
+  $("orig").onclick = () => { delete state.ai[u.id]; renderDetail(); };
+  if (aiAvailable) { $("ai").hidden = false; $("ai").onclick = () => refine(u, b); }
+}
+document.addEventListener("mouseover", e => { const t = e.target.closest("[data-tip]"); if (t) { const r = t.getBoundingClientRect(); showTip(esc(t.dataset.tip), r.left + r.width / 2, r.top); } });
+document.addEventListener("mouseout", e => { if (e.target.closest("[data-tip]")) hideTip(); });
+
+// ---------- AI 다듬기: Artifact에서는 보는 사람의 Claude, 내려받은 파일에서는 app.py의 /api/briefing
+let sampleFn = null, aiAvailable = false, saver = null;
+function aiPrompt(b) {
+  return "아래는 지자체 산림과 담당자가 기안서에 붙여 쓸 산불 예방 브리핑 초안이다. 공문서에 어울리는 자연스러운 한국어 3~5문장으로 다듬어라.\n" +
+    "규칙: 초안에 있는 숫자·지명·기간은 하나도 바꾸거나 빼지 말 것. 초안에 없는 숫자, 원인, 조치를 새로 만들지 말 것. 권고 조치는 초안의 것만 쓸 것. 머리말이나 설명 없이 다듬은 문장만 출력할 것.\n\n" +
+    "[근거 수치]\n" + JSON.stringify(b.facts, null, 0) + "\n\n[초안]\n" + b.text;
+}
+async function refine(u, b) {
+  const btn = $("ai"), st = $("briefstate"); btn.disabled = true; st.textContent = "AI가 문장을 다듬는 중입니다…";
+  try {
+    let text;
+    if (sampleFn) { const r = await sampleFn(aiPrompt(b), {modelTier: "quick", onText: ({text}) => { if (state.unit === u.i) $("brieftext").textContent = text; }}); text = r.text; }
+    else { const r = await fetch("api/briefing", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({prompt: aiPrompt(b)})}); const j = await r.json(); if (!r.ok) throw {message: j.error || "서버 오류"}; text = j.text; }
+    state.ai[u.id] = {text: text.trim()}; if (state.unit === u.i) renderDetail();
+  } catch (e) {
+    if (state.unit !== u.i) return;
+    $("brieftext").textContent = b.text; btn.disabled = false;
+    if (e && e.code === "not_granted") { aiAvailable = false; btn.hidden = true; st.textContent = "AI 사용을 허용하지 않아 원문을 그대로 둡니다."; }
+    else st.textContent = e && e.code === "rate_limited" ? "요청이 많아 잠시 뒤에 다시 시도해 주세요." : "AI 다듬기에 실패했습니다. 원문을 그대로 사용하세요.";
+  }
+}
+function csvText() {
+  const c = cities.get(state.city), q = v => '"' + String(v).replace(/"/g, '""') + '"';
+  const head = ["순위", "시군", "읍면", state.month ? state.month + "월 등급" : "연간 등급", "연간 등급", "모델 예상 연 발생(건)", "주원인 유형", "유형 근거", "위험 시기", "산불 건수(" + M.period + ")", "최근 5년 건수", "피해 면적(ha)", "권고 조치"];
+  const lines = ranked().map((u, r) => { const p = profile(u), rule = p.top ? RULES[G[p.top[1]]] : null;
+    return [r + 1, c.label, u.nm, grade(u), u.gr, u.rk.toFixed(2), rule ? rule.type : "", p.top ? (p.own ? "읍면 자체 기록" : "시군 전체 기록") : "", p.peak.label, u.n, u.n5, u.ha.toFixed(2), rule ? rule.act(p.peak.label, u).join(" / ") : ""].map(q).join(","); });
+  return "﻿" + head.map(q).join(",") + "\n" + lines.join("\n") + "\n";
+}
+$("csv").onclick = async () => {
+  const name = cities.get(state.city).label.replace(/\s+/g, "_") + "_산불예방_우선순위" + (state.month ? "_" + state.month + "월" : "") + ".csv", data = csvText();
+  if (saver) { try { await saver.save({filename: name, data}); } catch (e) { if (e && e.code !== "declined") $("listhint").textContent = "이 화면에서는 파일 저장을 쓸 수 없습니다."; } return; }
+  const a = el("a", {href: URL.createObjectURL(new Blob([data], {type: "text/csv"})), download: name}); document.body.appendChild(a); a.click(); a.remove();
+};
+if (window.claude && window.claude.use) {
+  $("csv").hidden = true;
+  window.claude.use("downloads").then(d => { if (d) { saver = d; $("csv").hidden = false; } });
+  window.claude.use("sample").then(s => { if (s) { sampleFn = s; aiAvailable = true; if (state.unit != null) renderDetail(); } });
+} else if (STANDALONE && location.protocol.startsWith("http")) {
+  fetch("api/briefing").then(r => r.ok ? r.json() : null).then(j => { if (j && j.available) { aiAvailable = true; renderDetail(); } }).catch(() => {});
+}
+
+// ---------- 검증·데이터 탭
+function renderCheck() {
+  const m = M.metrics, t = m.test, mdl = t["학습 모델"], base = t["기준선(과거 건수)"], sp = m.spatial, mt = M.match, tm = m.time_model;
+  const cc = tm.cell_coverage, kpi = (h, a, b2, note) => { const d = Math.round((a - b2) * 10) / 10; return '<div class="panel kpi"><h3>' + h + "</h3><b>" + a + '%</b><p class="cmp">' + note + " " + b2 + '%</p><span class="delta ' + (d >= 0 ? "up" : "down") + '">' + (d >= 0 ? "+" : "") + d + "%p</span></div>"; };
+  const W2 = 560, H2 = 330, L = 44, R = 96, Tp = 14, B = 38, pw = W2 - L - R, ph = H2 - Tp - B;
+  const X = q => L + q * pw, Y = v => Tp + (1 - v / 100) * ph, qs = m.curve_q;
+  const line = key => m.curves[key].map((v, i) => (i ? "L" : "M") + X(qs[i]).toFixed(1) + " " + Y(v).toFixed(1)).join("");
+  const i20 = qs.indexOf(0.2);
+  let svg = '<svg viewBox="0 0 ' + W2 + " " + H2 + '" width="100%" role="img" aria-label="상위 읍면 비율에 따른 산불 포착률 곡선" id="covsvg">';
+  for (const v of [0, 25, 50, 75, 100]) svg += '<line x1="' + L + '" x2="' + (L + pw) + '" y1="' + Y(v) + '" y2="' + Y(v) + '" stroke="var(--line)" stroke-width="1"/><text x="' + (L - 8) + '" y="' + (Y(v) + 4) + '" text-anchor="end">' + v + "%</text>";
+  for (const q of [0, 0.2, 0.4, 0.6, 0.8, 1]) svg += '<text x="' + X(q) + '" y="' + (Tp + ph + 16) + '" text-anchor="middle">' + Math.round(q * 100) + "%</text>";
+  svg += '<text x="' + (L + pw / 2) + '" y="' + (H2 - 4) + '" text-anchor="middle">위험 순위 상위 읍면 비율</text>';
+  svg += '<path d="M' + X(0) + " " + Y(0) + "L" + X(1) + " " + Y(100) + '" stroke="var(--ink-3)" stroke-width="1.5" stroke-dasharray="4 4" fill="none"/>';
+  svg += '<path d="' + line("기준선(과거 건수)") + '" stroke="var(--s2)" stroke-width="2" fill="none" stroke-linejoin="round"/>';
+  svg += '<path d="' + line("학습 모델") + '" stroke="var(--s1)" stroke-width="2" fill="none" stroke-linejoin="round"/>';
+  svg += '<circle cx="' + X(0.2) + '" cy="' + Y(m.curves["학습 모델"][i20]) + '" r="4.5" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>';
+  svg += '<circle cx="' + X(0.2) + '" cy="' + Y(m.curves["기준선(과거 건수)"][i20]) + '" r="4.5" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>';
+  const last = qs.length - 1;
+  svg += '<text x="' + (X(1) + 8) + '" y="' + (Y(100) + 4) + '" style="fill:var(--ink)">학습 모델</text><text x="' + (X(1) + 8) + '" y="' + (Y(100) + 18) + '">과거 건수 순위</text>';
+  svg += '<text x="' + (X(0.62)) + '" y="' + (Y(54)) + '">무작위</text>';
+  svg += '<line id="cross" x1="0" x2="0" y1="' + Tp + '" y2="' + (Tp + ph) + '" stroke="var(--ink-3)" stroke-width="1" visibility="hidden"/><rect id="covhit" x="' + L + '" y="' + Tp + '" width="' + pw + '" height="' + ph + '" fill="transparent"/></svg>';
+  const rows = [["상위 5%", "top5"], ["상위 10%", "top10"], ["상위 20%", "top20"], ["상위 30%", "top30"], ["상위 50%", "top50"], ["시군 안에서 상위 30%", "within_city_top30"]];
+  const imp = {log_area: "면적", sido_forest: "시도 임야 비율", y: "남북 위치", x: "동서 위치", sido_farm: "시도 전·답 비율", density: "면적당 과거 발생", since_last: "마지막 산불 이후 햇수", sido_rate: "시도 평균 발생률", city_rate: "시군 평균 발생률", nb_rate: "이웃 읍면 발생률", rate_all: "과거 발생률", rate_ewm: "최근 가중 발생률", log_ha: "과거 피해 면적", active_years: "산불이 난 해의 비율", forest_ratio: "읍면 임야 비율", farm_ratio: "읍면 농지 비율"};
+  $("view-check").innerHTML =
+    '<div class="kpis">' +
+      kpi("상위 20% 읍면이 담은 산불", mdl.top20, base.top20, "과거 건수 순위는") +
+      kpi("상위 30% 읍면이 담은 산불", mdl.top30, base.top30, "과거 건수 순위는") +
+      kpi("시군 안에서 상위 30%를 골랐을 때", mdl.within_city_top30, base.within_city_top30, "과거 건수 순위는") +
+      kpi("처음 보는 지역에서 상위 20%", sp.top20, base.top20, "과거 건수 순위는") + "</div>" +
+    '<div class="two"><div class="panel box"><h2>위험 순위가 실제 산불을 얼마나 담았나</h2><p>' + m.train_period + "년 기록만으로 읍면 순위를 매기고, 그 뒤 " + m.test_period + " 사이에 난 산불 " + fmt(m.n_test_fires) + "건으로 채점했습니다. 곡선이 위에 있을수록 적은 읍면으로 많은 산불을 담은 것입니다.</p>" +
+      '<div class="legend"><span><i class="sw" style="background:var(--s1)"></i>학습 모델</span><span><i class="sw" style="background:var(--s2)"></i>과거 건수 순위(기준선)</span><span><i class="sw" style="background:var(--ink-3)"></i>무작위</span></div>' +
+      '<div class="svgwrap">' + svg + "</div>" +
+      '<div class="tablewrap" style="max-height:none"><table><thead><tr><th>고른 범위</th><th class="r">과거 건수 순위</th><th class="r">학습 모델</th><th class="r">처음 보는 지역</th></tr></thead><tbody class="plainrows">' +
+      rows.map(r => '<tr style="cursor:default"><td>' + r[0] + '</td><td class="r num">' + base[r[1]] + '%</td><td class="r num">' + mdl[r[1]] + '%</td><td class="r num">' + sp[r[1]] + "%</td></tr>").join("") + "</tbody></table></div></div>" +
+    '<div class="panel box"><h2>결과 읽는 법</h2><ul>' +
+      "<li><strong>모델이 기준선을 넘었지만 차이는 작습니다.</strong> 상위 20% 기준 +" + m.diff_top20.mean + "%p이고, 시험 산불을 다시 뽑아 계산한 95% 구간은 " + m.diff_top20.ci95[0] + "~" + m.diff_top20.ci95[1] + "%p입니다.</li>" +
+      "<li><strong>실제 쓰임에 가까운 지표는 '시군 안에서 상위 30%'입니다.</strong> 담당자는 자기 시군 안에서 읍면을 고르기 때문입니다. 여기서는 " + base.within_city_top30 + "% → " + mdl.within_city_top30 + "%입니다.</li>" +
+      "<li><strong>처음 보는 지역</strong>은 시군을 5묶음으로 나눠 학습에서 뺀 지역만 예측한 결과입니다. 상위 20%에서는 기준선과 비슷하고 상위 30%부터 앞섭니다.</li>" +
+      "<li><strong>'언제'는 전국 공통 계절성이 거의 전부입니다.</strong> 읍면별 월 곡선은 전국 월 분포보다 시험 산불의 달을 더 잘 맞히지 못했습니다(월 로그우도 " + tm.loglik_national + " → " + tm.loglik_unit + "). 월별 지도는 '이 읍면의 원인 구성이라면 어느 달에 몰리는가'를 보여주는 설명용입니다.</li>" +
+      "<li><strong>전국 순위는 단위 크기에 좌우됩니다.</strong> 시의 '동 지역'은 여러 동을 합친 큰 단위라 상위에 몰립니다. 전국 순위보다 시군 안 순위를 보십시오.</li>" +
+      "<li>모델이 많이 쓴 정보: " + m.importance.slice(0, 6).map(x => imp[x[0]] || x[0].replace("rate_", "") + " 발생률").join(", ") + ".</li></ul></div></div>" +
+    '<div class="two"><div class="panel box"><h2>데이터 점검</h2><ul>' +
+      "<li>산불 " + fmt(mt.total) + "건 중 <strong>" + fmt(mt.unit_matched) + "건(" + mt.unit_matched_pct + "%)</strong>을 읍면 단위에 붙였습니다. 이름이 바뀐 읍면 " + (mt.by_match["개명"] || 0) + "건, 한 글자 오타로 보고 고친 것 " + (mt.by_match["오타보정"] || 0) + "건, 읍면을 알 수 없는 것 " + ((mt.by_match["읍면불명"] || 0) + (mt.by_match["구불명"] || 0)) + "건입니다.</li>" +
+      "<li>분석 단위는 " + fmt(M.n_units) + "곳입니다. 읍·면은 하나씩, 동은 시군구별 '동 지역'으로 묶었습니다. 산불통계가 도시 지역은 시·구까지만 적혀 있기 때문입니다.</li>" +
+      "<li><strong>경계 파일에 접경지역 읍면 " + mt.no_shape_units + "곳이 없습니다</strong>(파주 파평면, 강화 선원면, 철원 김화읍 등). 이곳 산불 " + mt.no_shape_fires + "건은 표와 모델에는 들어가지만 지도에는 그려지지 않습니다.</li>" +
+      (m.has_land ? "<li><strong>읍면별 임야·농지 비율</strong>은 국토교통부 토지임야정보(필지별 지목·면적, 2026-09 기준)를 읍면별로 더해 만들었습니다. " +
+        (m.use_land ? "학습 기간 안 검증에서 순위를 개선해 모델에 넣었습니다." : "학습 기간 안 검증에서 상위 20% 포착률을 높이지 못해 모델에는 넣지 않았고, 읍면 상세에 참고로만 표시합니다.") + "</li>"
+        : "<li><strong>지목 면적 파일은 시도 단위(17행)</strong>였습니다. 읍면별 산림·농지 비율은 아직 모델에 없고, 시도 비율만 들어갔습니다.</li>") +
+      "<li>발생 시각·동리는 2022~2025년 자료 " + fmt(mt.supp_rows) + "건 중 " + fmt(mt.supp_joined) + "건을 날짜와 장소로 붙였습니다.</li>" +
+      "<li>최종 순위는 " + m.final_feature_year + "년까지의 기록으로 다시 학습한 값입니다. 2026년은 9월까지만 있어 특징 계산에서 뺐습니다.</li></ul></div>" +
+    '<div class="panel box"><h2>원인 유형별 조치 규칙</h2><p>브리핑의 권고는 이 표에서만 나옵니다. 앞의 4개는 팀 기획서, 뒤의 3개는 산림청 전국 산불방지 종합대책(2025·2026)과 산림보호법 벌칙 규정을 근거로 정했습니다.</p><div class="tablewrap" style="max-height:none"><table class="plain"><thead><tr><th>유형</th><th>권고 조치</th><th>근거</th></tr></thead><tbody>' +
+      Object.keys(RULES).map(g => "<tr><td>" + RULES[g].type + (RULES[g].draft ? ' <span class="tag">초안</span>' : "") + "</td><td>" + RULES[g].act("위험 시기").join(", ") + '</td><td class="muted">' + (RULE_BASIS[g] || "") + "</td></tr>").join("") + "</tbody></table></div></div></div>";
+  const hit = $("covhit"), cross = $("cross"), sv = $("covsvg");
+  hit.addEventListener("pointermove", e => { const r = sv.getBoundingClientRect(), sx = (e.clientX - r.left) * W2 / r.width; let i = Math.round((sx - L) / pw * last); i = Math.max(0, Math.min(last, i)); cross.setAttribute("x1", X(qs[i])); cross.setAttribute("x2", X(qs[i])); cross.setAttribute("visibility", "visible");
+    showTip("상위 " + (qs[i] * 100).toFixed(1).replace(".0", "") + "% 읍면<br>학습 모델 " + m.curves["학습 모델"][i] + "%<br>과거 건수 순위 " + m.curves["기준선(과거 건수)"][i] + "%<br>무작위 " + (qs[i] * 100).toFixed(1).replace(".0", "") + "%", e.clientX, e.clientY); });
+  hit.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); hideTip(); });
+}
+
+function renderAll() {
+  $("maptitle").textContent = (state.month ? state.month + "월 " : "연간 ") + "위험 등급";
+  $("mapnote").textContent = state.month ? "월 등급은 전체 읍면×월 칸을 한 줄로 세워 상위 5·15·35·65%에서 나눈 것입니다. 달을 바꾸면 색이 달라집니다." : "연간 등급은 전국 " + fmt(M.n_units) + "곳을 위험 점수 순으로 세워 상위 5·15·35·65%에서 나눈 것입니다. 지도를 누르면 그 읍면으로 이동합니다.";
+  draw(); renderList(); renderDetail();
+}
+function setTab(name) {
+  const isCheck = name === "check";
+  $("tab-map").setAttribute("aria-selected", String(!isCheck)); $("tab-check").setAttribute("aria-selected", String(isCheck));
+  $("view-map").hidden = isCheck; $("view-check").hidden = !isCheck;
+  if (!isCheck) { resize(); draw(); }
+}
+$("tab-map").onclick = () => { setTab("map"); try { history.replaceState(null, "", "#map"); } catch (e) {} };
+$("tab-check").onclick = () => { setTab("check"); try { history.replaceState(null, "", "#check"); } catch (e) {} };
+
+$("subline").textContent = "산림청 산불통계 " + M.period + " " + fmt(M.n_fires) + "건으로 학습한 읍면 단위 위험 예측. 시군을 고르면 어느 읍면부터, 어느 달에, 무엇을 할지 보여줍니다.";
+renderCheck();
+resize();
+const start = [...cities.values()].find(c => c.label === "경북 봉화군") || [...cities.values()][0];
+selSido.value = start.sd; fillCities(start.sd); selectCity(start.key);
+if (location.hash === "#check") setTab("check");
+let rt; window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { if ($("view-map").hidden) return; const cx = (W / 2 - tx) / k, cy = (ty - H / 2) / k; resize(); tx = W / 2 - cx * k; ty = H / 2 + cy * k; draw(); }, 80); });
+const mq = window.matchMedia("(prefers-color-scheme: dark)"); if (mq.addEventListener) mq.addEventListener("change", draw);
+new MutationObserver(draw).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(draw);
+})();
+</script>
